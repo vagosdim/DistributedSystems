@@ -49,21 +49,19 @@ class Peer(Protocol):
 	acks = 0
 	connected = False
 
-	def __init__(self, factory, peer_type):
-		self.pt = peer_type
+	def __init__(self, factory):
 		self.factory = factory
 
 	def connectionMade(self):
-		if self.pt == 'client':
-			self.connected = True
-			reactor.callLater(5, self.sendUpdate)
-		else:
-			print "Connected from", self.transport.client
-			try:
-				self.transport.write('<connection up>')
-			except Exception, e:
-				print e.args[0]
-			self.ts = time.time()
+		
+		self.connected = True
+		reactor.callLater(5, self.sendUpdate)
+		#print "Connected to", self.transport.client
+		try:
+			self.transport.write('<connection up>')
+		except Exception, e:
+			print e.args[0]
+		self.ts = time.time()
 
 	def sendUpdate(self):
 		print "Sending update"
@@ -71,8 +69,8 @@ class Peer(Protocol):
 			self.transport.write('<update>')
 		except Exception, ex1:
 			print "Exception trying to send: ", ex1.args[0]
-		if self.connected == True:
-			reactor.callLater(5, self.sendUpdate)
+		#if self.connected == True:
+			#reactor.callLater(5, self.sendUpdate)
 
 	def sendAck(self):
 		print "sendAck"
@@ -83,18 +81,17 @@ class Peer(Protocol):
 			print e.args[0]
 
 	def dataReceived(self, data):
-		if self.pt == 'client':
-			print 'Client received ' + data
-			self.acks += 1
-		else:
-			print 'Server received ' + data
+		print 'Received ' + data
+		if(data == '<update>'):
 			self.sendAck()
+		else:
+			self.acks += 1
+			reactor.callLater(5, self.sendUpdate)
 
 	def connectionLost(self, reason):
 		print "Disconnected"
-		if self.pt == 'client':
-			self.connected = False
-			self.done()
+		self.connected = False
+		self.done()
 
 	def done(self):
 		self.factory.finished(self.acks)
@@ -102,9 +99,8 @@ class Peer(Protocol):
 
 class PeerFactory(ClientFactory):
 
-	def __init__(self, peertype, fname):
+	def __init__(self, fname):
 		print '@__init__'
-		self.pt = peertype
 		self.acks = 0
 		self.fname = fname
 		self.records = []
@@ -125,17 +121,15 @@ class PeerFactory(ClientFactory):
 
 	def startFactory(self):
 		print "@startFactory"
-		if self.pt == 'server':
-			self.fp = open(self.fname, 'w+')
+		self.fp = open(self.fname, 'w+')
 
 	def stopFactory(self):
 		print "@stopFactory"
-		if self.pt == 'server':
-			self.fp.close()
+		self.fp.close()
 
 	def buildProtocol(self, addr):
 		print "@buildProtocol"
-		protocol = Peer(self, self.pt)
+		protocol = Peer(self)
 		return protocol
 
 
@@ -144,30 +138,30 @@ if __name__ == '__main__':
 
 
 	if processNo == "0":
-		factory = PeerFactory('server', 'log')
+		factory = PeerFactory('log')
 		reactor.listenTCP(2434, factory)
 		print "Starting p0 @" + address[0] + " port " + str(address[1])	
-		f = open("log.txt","w")
+		f = open("network.txt","w")
 		f.write(str(address[0])+'\n')
 		f.close()
 
 	elif processNo == "1":
-		factory0 = PeerFactory('client', '')
+		factory0 = PeerFactory('log')
 		host, port = address
-		f = open("log.txt","a+")
+		f = open("network.txt","a+")
 		p0Address = f.readline()
 		print "Connecting to host " + p0Address + " port " + str(port)
 		reactor.connectTCP(p0Address, port, factory0)
-		factory1 = PeerFactory('server', 'log')
+		factory1 = PeerFactory('log')
 		reactor.listenTCP(2434, factory1)
 		f.write(str(address[0])+'\n')
 		f.close()
 
 	elif processNo == "2":
-		factory0 = PeerFactory('client', '')
-		factory1 = PeerFactory('client', '')
+		factory0 = PeerFactory('log')
+		factory1 = PeerFactory('log')
 		host, port = address
-		f = open("log.txt","r")
+		f = open("network.txt","r")
 		p0Address = f.readline()
 		p1Address = f.readline()
 		print "Connecting to host " + p0Address + " port " + str(port)
