@@ -14,12 +14,14 @@ from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet import reactor
 import time
 
+MAX_MESSAGES = 4
 nodesConnected = 0
 peerList = []
+lamportClocks = {}
+LC = 0
 
 def parse_args():
 	usage = """usage: %prog [options] process number [hostname]:port
-
 	python peer.py 0 127.0.0.1:port """
 
 	parser = optparse.OptionParser(usage)
@@ -68,45 +70,56 @@ class Peer(Protocol):
 		
 		#print "Connected to", self.transport.client
 		try:
-			self.transport.write('<connection up>')
+			self.transport.write('<connection up>,0,0,0')
 		except Exception, e:
 			print e.args[0]
 		nodesConnected += 1
-		self.ts = time.time()
 		print(nodesConnected)
 		if(nodesConnected == 2 and self.no == 0):
-			for peer in peerList:		
-				reactor.callLater(5, peer.sendUpdate)
+			reactor.callLater(2, self.sendUpdate)
 
 	def sendUpdate(self):
-
-		if(self.updateCounter == 4):
+		
+		global LC,MAX_MESSAGES,peerList
+		if(self.updateCounter == MAX_MESSAGES):
 			return
 
 		print "Sending update"
-		try:		
-			self.transport.write('<update'+str(self.updateCounter)+'>')
+		try:
+			info = str(LC)+','+str(self.updateCounter)+','+str(self.no)		
+			for peer in peerList:					
+				peer.transport.write('<update'+str(self.updateCounter)+'>,'+info)
 		except Exception, ex1:
 			print "Exception trying to send: ", ex1.args[0]
 		self.updateCounter += 1
 		if self.connected == True:
-			reactor.callLater(5, self.sendUpdate)
+			reactor.callLater(2, self.sendUpdate)
 
-	def sendAck(self):
+	def sendAck(self,no,counter):
+		global LC
 		print "sendAck"
-		self.ts = time.time()
 		try:
-			self.transport.write('<Ack>')
+			info = str(counter)+str(no)
+			self.transport.write('<Ack>,'+str(LC)+','+info+','+str(self.no))
 		except Exception, e:
 			print e.args[0]
 
 	def dataReceived(self, data):
-		print 'Received ' + data	
+		global LC,lamportClocks
+		print 'Received ' + data
+	
+		tokens = data.split(',')
+		LC = max(LC,int(tokens[1]))+1
+		lamportClocks[self.no] = LC
+		lamportClocks[int(tokens[3])] = int(tokens[1])
+		
 		if(data.startswith('<update')):
-			#self.sendAck()
+			self.sendAck(tokens[2],tokens[3])
 			print('Data is <update>')
-		else:
+		elif(data.startswith('<Ack>')):
 			self.acks += 1
+			
+			
 
 	def connectionLost(self, reason):
 		print "Disconnected"
@@ -194,4 +207,4 @@ if __name__ == '__main__':
 	else:
 		print "Error"	
 
-	reactor.run()
+reactor.run()
