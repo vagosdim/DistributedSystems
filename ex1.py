@@ -13,11 +13,17 @@ import optparse
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet import reactor
 import time
+from time import sleep
 
-MAX_MESSAGES = 4
+MAX_MESSAGES = 20
 nodesConnected = 0
 peerList = []
-lamportClocks = {}
+#dictionary with keys:unique process id	  value:logical time
+lamportClocks = {} 
+#dictionary with keys:unique message id   value:number of acks received for msg
+ackMessages = {}
+#dictionary with keys:unique message id   value:message content
+contentMessages = {}
 LC = 0
 
 def parse_args():
@@ -68,55 +74,65 @@ class Peer(Protocol):
 		global nodesConnected,peerList
 		self.connected = True
 		
-		#print "Connected to", self.transport.client
 		try:
 			self.transport.write('<connection up>,0,0,0')
 		except Exception, e:
 			print e.args[0]
 		nodesConnected += 1
 		print(nodesConnected)
-		if(nodesConnected == 2 and self.no == 0):
-			reactor.callLater(2, self.sendUpdate)
+		if(nodesConnected == 2 ):
+			reactor.callLater(0.47*2, self.sendUpdate)
 
+	
+	#message format: <updateX>,LC,unique msg-ID
 	def sendUpdate(self):
 		
-		global LC,MAX_MESSAGES,peerList
+		global LC,MAX_MESSAGES,peerList,ackMessages,contentMessages
+		LC += 1
 		if(self.updateCounter == MAX_MESSAGES):
 			return
 
 		print "Sending update"
 		try:
-			info = str(LC)+','+str(self.updateCounter)+','+str(self.no)		
+			info = str(LC)+','+str(self.updateCounter)+','+str(self.no)
+			idt =  str(self.updateCounter)+str(self.no)		
+			ackMessages[idt] = 0
+			contentMessages[idt] = '<update'+str(self.updateCounter)+'>,'+info
+
 			for peer in peerList:					
 				peer.transport.write('<update'+str(self.updateCounter)+'>,'+info)
 		except Exception, ex1:
 			print "Exception trying to send: ", ex1.args[0]
 		self.updateCounter += 1
 		if self.connected == True:
-			reactor.callLater(2, self.sendUpdate)
+			reactor.callLater(0.67*2, self.sendUpdate)
 
-	def sendAck(self,no,counter):
+	#Ack format: <Ack>,LC,unique msg-ID,proccess ID who sends Ack
+	def sendAck(self,idt):
 		global LC
 		print "sendAck"
 		try:
-			info = str(counter)+str(no)
-			self.transport.write('<Ack>,'+str(LC)+','+info+','+str(self.no))
+			self.transport.write('<Ack>,'+str(LC)+','+idt+','+str(self.no))
 		except Exception, e:
 			print e.args[0]
 
 	def dataReceived(self, data):
-		global LC,lamportClocks
-		print 'Received ' + data
+		global LC,lamportClocks,ackMessages,contentMessages
 	
 		tokens = data.split(',')
+		print(tokens)
 		LC = max(LC,int(tokens[1]))+1
 		lamportClocks[self.no] = LC
 		lamportClocks[int(tokens[3])] = int(tokens[1])
 		
 		if(data.startswith('<update')):
-			self.sendAck(tokens[2],tokens[3])
-			print('Data is <update>')
+			idt = str(tokens[2])+str(tokens[3])
+			contentMessages[idt] = data
+			ackMessages[idt] = 1
+			reactor.callLater(2,self.sendAck,idt)
 		elif(data.startswith('<Ack>')):
+			idt = str(tokens[2])
+			ackMessages[idt] += 1
 			self.acks += 1
 			
 			
