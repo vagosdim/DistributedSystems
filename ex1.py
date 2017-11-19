@@ -13,6 +13,7 @@ import optparse
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet import reactor
 import time
+import random
 from time import sleep
 
 MAX_MESSAGES = 5
@@ -78,13 +79,13 @@ class Peer(Protocol):
 		self.connected = True
 		
 		try:
-			self.transport.write('<connection up>,0,0,0')
+			self.transport.write('<connection up>,0,0,0,')
 		except Exception, e:
 			print e.args[0]
 		nodesConnected += 1
 		print(nodesConnected)
 		if(nodesConnected == 2 ):
-			reactor.callLater(2+(self.no*0.06), self.sendUpdate)
+			reactor.callLater(2, self.sendUpdate)
 
 	def programStop(self):
 		print('\n\n')
@@ -98,7 +99,7 @@ class Peer(Protocol):
 		
 		global LC,MAX_MESSAGES,peerList,ackMessages,contentMessages,messageTS
 		
-		LC += 1
+		LC += self.no
 		if(self.updateCounter == MAX_MESSAGES+1):	
 			try:			
 				for peer in peerList:					
@@ -112,7 +113,7 @@ class Peer(Protocol):
 
 		#print "Sending update"
 		try:
-			info = str(LC)+','+str(self.updateCounter)+','+str(self.no)
+			info = str(LC)+','+str(self.updateCounter)+','+str(self.no)+','
 			idt =  str(self.updateCounter)+str(self.no)		
 			idt = int(idt)
 			
@@ -135,9 +136,16 @@ class Peer(Protocol):
 		global LC
 		print "sendAck"
 		try:
-			self.transport.write('<Ack>,'+str(LC)+','+idt+','+str(self.no))
+			self.transport.write('<Ack>,'+str(LC)+','+idt+','+str(self.no)+',')
 		except Exception, e:
 			print e.args[0]
+
+	def handleMessage(self,tokens):
+		
+		message1 = tokens[0]+','+tokens[1]+','+tokens[2]+','+tokens[3]
+		message2 = tokens[4]+','+tokens[5]+','+tokens[6]+','+tokens[7]
+		self.dataReceived(message1)
+		self.dataReceived(message2)
 
 	def dataReceived(self, data):
 		global LC,lamportClocks,ackMessages,contentMessages,messageTS,peerList
@@ -145,6 +153,9 @@ class Peer(Protocol):
 		if(data == ''):
 			return
 		tokens = data.split(',')
+		if(len(tokens)>5):
+			self.handleMessage(tokens)
+			return
 		print(tokens)
 		receivedLC = int(tokens[1])
 		processNo = int(tokens[3]) 
@@ -162,7 +173,7 @@ class Peer(Protocol):
 			ackMessages[int(idt)] = 1
 			#payload = 0.01
 			for peer in peerList:				
-				reactor.callLater(0.05,peer.sendAck,idt)
+				reactor.callLater(0.07,peer.sendAck,idt)
 				#payload += 0.01
 		elif(data.startswith('<Ack>')):
 			idt = int(tokens[2])
