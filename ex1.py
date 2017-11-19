@@ -15,11 +15,7 @@ from twisted.internet import reactor
 import time
 from time import sleep
 
-<<<<<<< HEAD
 MAX_MESSAGES = 5
-=======
-MAX_MESSAGES = 20
->>>>>>> fb318288d882add53dcce4eb69b6efae17c20c0b
 nodesConnected = 0
 peerList = []
 #dictionary with keys:unique process id	  value:logical time
@@ -28,11 +24,8 @@ lamportClocks = {}
 ackMessages = {}
 #dictionary with keys:unique message id   value:message content
 contentMessages = {}
-<<<<<<< HEAD
 #dictionary with all incoming messages. key:idt value:msg timestamp(TS)
 messageTS = {} 
-=======
->>>>>>> fb318288d882add53dcce4eb69b6efae17c20c0b
 LC = 0
 
 def parse_args():
@@ -70,16 +63,13 @@ class Peer(Protocol):
 	connected = False
 
 	def __init__(self, factory,no):
-		global peerCounter,peerList
+		global peerCounter,peerList,LC
 		
 		self.factory = factory
 		self.no = int(no)
-<<<<<<< HEAD
 		self.updateCounter = 1
-=======
-		self.updateCounter = 0
->>>>>>> fb318288d882add53dcce4eb69b6efae17c20c0b
 		peerList.append(self)
+		LC = self.no
 		
 
 	def connectionMade(self):
@@ -94,7 +84,6 @@ class Peer(Protocol):
 		nodesConnected += 1
 		print(nodesConnected)
 		if(nodesConnected == 2 ):
-<<<<<<< HEAD
 			reactor.callLater(2+(self.no*0.06), self.sendUpdate)
 
 	def programStop(self):
@@ -135,37 +124,11 @@ class Peer(Protocol):
 
 			for peer in peerList:					
 				peer.transport.write(message)
-=======
-			reactor.callLater(0.47*2, self.sendUpdate)
-
-	
-	#message format: <updateX>,LC,unique msg-ID
-	def sendUpdate(self):
-		
-		global LC,MAX_MESSAGES,peerList,ackMessages,contentMessages
-		LC += 1
-		if(self.updateCounter == MAX_MESSAGES):
-			return
-
-		print "Sending update"
-		try:
-			info = str(LC)+','+str(self.updateCounter)+','+str(self.no)
-			idt =  str(self.updateCounter)+str(self.no)		
-			ackMessages[idt] = 0
-			contentMessages[idt] = '<update'+str(self.updateCounter)+'>,'+info
-
-			for peer in peerList:					
-				peer.transport.write('<update'+str(self.updateCounter)+'>,'+info)
->>>>>>> fb318288d882add53dcce4eb69b6efae17c20c0b
 		except Exception, ex1:
 			print "Exception trying to send: ", ex1.args[0]
 		self.updateCounter += 1
 		if self.connected == True:
-<<<<<<< HEAD
 			reactor.callLater(2, self.sendUpdate)
-=======
-			reactor.callLater(0.67*2, self.sendUpdate)
->>>>>>> fb318288d882add53dcce4eb69b6efae17c20c0b
 
 	#Ack format: <Ack>,LC,unique msg-ID,proccess ID who sends Ack
 	def sendAck(self,idt):
@@ -177,7 +140,6 @@ class Peer(Protocol):
 			print e.args[0]
 
 	def dataReceived(self, data):
-<<<<<<< HEAD
 		global LC,lamportClocks,ackMessages,contentMessages,messageTS,peerList
 		
 		if(data == ''):
@@ -234,27 +196,6 @@ class Peer(Protocol):
 				break
 		outputFile.close()
 		return
-=======
-		global LC,lamportClocks,ackMessages,contentMessages
-	
-		tokens = data.split(',')
-		print(tokens)
-		LC = max(LC,int(tokens[1]))+1
-		lamportClocks[self.no] = LC
-		lamportClocks[int(tokens[3])] = int(tokens[1])
-		
-		if(data.startswith('<update')):
-			idt = str(tokens[2])+str(tokens[3])
-			contentMessages[idt] = data
-			ackMessages[idt] = 1
-			reactor.callLater(2,self.sendAck,idt)
-		elif(data.startswith('<Ack>')):
-			idt = str(tokens[2])
-			ackMessages[idt] += 1
-			self.acks += 1
-			
-			
->>>>>>> fb318288d882add53dcce4eb69b6efae17c20c0b
 
 	def connectionLost(self, reason):
 		print "Disconnected"
