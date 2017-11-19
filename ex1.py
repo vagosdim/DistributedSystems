@@ -13,11 +13,9 @@ import optparse
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet import reactor
 import time
-import random
-from time import sleep
 
 MAX_MESSAGES = 5
-nodesConnected = 0
+NODES_CONNECTED = 0
 peerList = []
 #dictionary with keys:unique process id	  value:logical time
 lamportClocks = {} 
@@ -75,24 +73,16 @@ class Peer(Protocol):
 
 	def connectionMade(self):
 		
-		global nodesConnected,peerList
+		global NODES_CONNECTED,peerList
 		self.connected = True
 		
 		try:
-			self.transport.write('<connection up>,0,0,0,')
+			self.transport.write('<Connection up>')
 		except Exception, e:
 			print e.args[0]
-		nodesConnected += 1
-		print(nodesConnected)
-		if(nodesConnected == 2 ):
+		NODES_CONNECTED += 1
+		if(NODES_CONNECTED == 2 ):
 			reactor.callLater(2, self.sendUpdate)
-
-	def programStop(self):
-		print('\n\n')
-		print(contentMessages)	
-		print('\n\n')
-		print(ackMessages)
-		sleep(1000)	
 
 	#message format: <updateX>,LC,unique msg-ID
 	def sendUpdate(self):
@@ -101,24 +91,22 @@ class Peer(Protocol):
 		
 		LC += self.no
 		if(self.updateCounter == MAX_MESSAGES+1):	
-			try:			
-				for peer in peerList:					
-					peer.transport.write('')
-				if self.connected == True:
-					reactor.callLater(2, self.sendUpdate)
-			except Exception, ex1:
-				print "Exception trying to send: ", ex1.args[0]
-			return		
-			#self.programStop()
+			print(self.acks)
+			expectedNumberOfAcks = (MAX_MESSAGES)*(NODES_CONNECTED)
+			if(self.acks<expectedNumberOfAcks):
+				return
+			else:
+				print("Communication terminated OK")
+				self.connectionLost("Communication terminated OK")
+				time.sleep(10000000)			
 
-		#print "Sending update"
 		try:
 			info = str(LC)+','+str(self.updateCounter)+','+str(self.no)+','
 			idt =  str(self.updateCounter)+str(self.no)		
 			idt = int(idt)
 			
 			ackMessages[idt] = 0
-			message = '<Message from node'+str(self.no)+' message number:'
+			message = '<Message from node:'+str(self.no)+' message number:'
 			message += str(self.updateCounter)+'>,'+info
 			contentMessages[idt] = message
 			messageTS[idt] = LC
@@ -136,7 +124,7 @@ class Peer(Protocol):
 		global LC
 		print "sendAck"
 		try:
-			self.transport.write('<Ack>,'+str(LC)+','+idt+','+str(self.no)+',')
+			self.transport.write('<Ack>,'+str(LC)+','+str(idt)+','+str(self.no)+',')
 		except Exception, e:
 			print e.args[0]
 
@@ -150,45 +138,33 @@ class Peer(Protocol):
 	def dataReceived(self, data):
 		global LC,lamportClocks,ackMessages,contentMessages,messageTS,peerList
 		
-		if(data == ''):
+		if(data == '' or data == '<Connection up>'):
 			return
+
 		tokens = data.split(',')
 		if(len(tokens)>5):
 			self.handleMessage(tokens)
 			return
-		print(tokens)
+		print('Data received: ',tokens)
 		receivedLC = int(tokens[1])
 		processNo = int(tokens[3]) 
 		LC = max(LC,receivedLC)+1
 		lamportClocks[self.no] = LC
 		lamportClocks[processNo] = receivedLC
 
-		#if(len(messageTS)>0):
-		#	self.deliverMessages()
-		
 		if(data.startswith('<Message')):
 			idt = str(tokens[2])+str(processNo)
+			idt = int(idt)
 			messageTS[idt] = receivedLC
-			contentMessages[int(idt)] = data
-			ackMessages[int(idt)] = 1
-			#payload = 0.01
-			for peer in peerList:				
-				reactor.callLater(0.07,peer.sendAck,idt)
-				#payload += 0.01
+			contentMessages[idt] = data
+			ackMessages[idt] = 1
+			for peer in peerList:								
+				reactor.callLater(0.5,peer.sendAck,idt)
 		elif(data.startswith('<Ack>')):
 			idt = int(tokens[2])
 			ackMessages[idt] += 1
-			outputFile = open('delivered_messages_'+str(self.no),'a+')
-			if(ackMessages[idt] == 2):
-				outputFile.write(contentMessages[idt]+'\n')
-				#contentMessages.pop(msg)
-				#ackMessages.pop(msg)
-				#messageTS.pop(msg)
-				#print('\n\n\n\nENTERED\n\n\n\n')
-			outputFile.close()
-			
 			self.acks += 1
-			#self.deliverMessages()
+			self.deliverMessages()
 			
 	def deliverMessages(self):
 		global ackMessages,contentMessages,messageTS
@@ -198,11 +174,13 @@ class Peer(Protocol):
 		for msg in orderedMessages:
 			msg = int(msg)
 			if(ackMessages[msg] == 2):
-				outputFile.write(contentMessages[msg]+'\n')
+				message = contentMessages[msg]
+				tokens = message.split(',')
+				outputMessage = tokens[0]+' sent with TS:'+str(tokens[1])
+				outputFile.write(outputMessage+'\n')
 				contentMessages.pop(msg)
 				ackMessages.pop(msg)
 				messageTS.pop(msg)
-				print('\n\n\n\nENTERED\n\n\n\n')
 			else:
 				break
 		outputFile.close()
